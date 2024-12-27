@@ -43,6 +43,9 @@ struct conexant_spec {
 	unsigned int gpio_mute_led_mask;
 	unsigned int gpio_mic_led_mask;
 	bool is_cx8070_sn6140;
+
+	const unsigned int *raw_init_verbs[5];
+	unsigned int num_raw_init_verbs;
 };
 
 
@@ -187,7 +190,13 @@ static void cx_fixup_headset_recog(struct hda_codec *codec)
 
 static int cx_auto_init(struct hda_codec *codec)
 {
+	int i, j;
 	struct conexant_spec *spec = codec->spec;
+
+	for (i = 0; i < spec->num_raw_init_verbs; i++)
+		for (j = 0; spec->raw_init_verbs[i][j] != -1; j++)
+			snd_hda_codec_exec_verb(codec, spec->raw_init_verbs[i][j], NULL);
+
 	snd_hda_gen_init(codec);
 	if (!spec->dynamic_eapd)
 		cx_auto_turn_eapd(codec, spec->num_eapds, spec->eapds, true);
@@ -290,6 +299,7 @@ enum {
 	CXT_FIXUP_STEREO_DMIC,
 	CXT_PINCFG_LENOVO_NOTEBOOK,
 	CXT_FIXUP_INC_MIC_BOOST,
+	CXT_FIXUP_SET_RAW_VERBS,
 	CXT_FIXUP_HEADPHONE_MIC_PIN,
 	CXT_FIXUP_HEADPHONE_MIC,
 	CXT_FIXUP_GPIO1,
@@ -315,6 +325,12 @@ enum {
 
 /* for hda_fixup_thinkpad_acpi() */
 #include "thinkpad_helper.c"
+
+static unsigned int cxt5066_raw_init_verbs_lemote_aio_a1205[] = {
+	0x273f01c, /* Set speaker power to 1.5W@8ohm */
+	0x2729003, /* Set High pass filter to 90Hz */
+	-1 /* end */
+};
 
 static void cxt_fixup_stereo_dmic(struct hda_codec *codec,
 				  const struct hda_fixup *fix, int action)
@@ -347,6 +363,19 @@ static void cxt5066_increase_mic_boost(struct hda_codec *codec,
 				  (0x4 << AC_AMPCAP_NUM_STEPS_SHIFT) |
 				  (0x27 << AC_AMPCAP_STEP_SIZE_SHIFT) |
 				  (0 << AC_AMPCAP_MUTE_SHIFT));
+}
+
+static void cxt5066_set_raw_verbs(struct hda_codec *codec,
+				   const struct hda_fixup *fix, int action)
+{
+	struct conexant_spec *spec = codec->spec;
+
+	if (action != HDA_FIXUP_ACT_PRE_PROBE)
+		return;
+
+	spec->raw_init_verbs[spec->num_raw_init_verbs] =
+		cxt5066_raw_init_verbs_lemote_aio_a1205;
+	spec->num_raw_init_verbs++;
 }
 
 static void cxt_update_headset_mode(struct hda_codec *codec)
@@ -832,23 +861,6 @@ static const struct hda_pintbl cxt_pincfg_sws_js201d[] = {
 	{}
 };
 
-/* pincfg quirk for Tuxedo Sirius;
- * unfortunately the (PCI) SSID conflicts with System76 Pangolin pang14,
- * which has incompatible pin setup, so we check the codec SSID (luckily
- * different one!) and conditionally apply the quirk here
- */
-static void cxt_fixup_sirius_top_speaker(struct hda_codec *codec,
-					 const struct hda_fixup *fix,
-					 int action)
-{
-	/* ignore for incorrectly picked-up pang14 */
-	if (codec->core.subsystem_id == 0x278212b3)
-		return;
-	/* set up the top speaker pin */
-	if (action == HDA_FIXUP_ACT_PRE_PROBE)
-		snd_hda_codec_set_pincfg(codec, 0x1d, 0x82170111);
-}
-
 static const struct hda_fixup cxt_fixups[] = {
 	[CXT_PINCFG_LENOVO_X200] = {
 		.type = HDA_FIXUP_PINS,
@@ -868,6 +880,8 @@ static const struct hda_fixup cxt_fixups[] = {
 	},
 	[CXT_PINCFG_LEMOTE_A1205] = {
 		.type = HDA_FIXUP_PINS,
+		.chained = true,
+		.chain_id = CXT_FIXUP_SET_RAW_VERBS,
 		.v.pins = cxt_pincfg_lemote,
 	},
 	[CXT_PINCFG_COMPAQ_CQ60] = {
@@ -894,6 +908,10 @@ static const struct hda_fixup cxt_fixups[] = {
 	[CXT_FIXUP_INC_MIC_BOOST] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = cxt5066_increase_mic_boost,
+	},
+	[CXT_FIXUP_SET_RAW_VERBS] = {
+		.type = HDA_FIXUP_FUNC,
+		.v.func = cxt5066_set_raw_verbs,
 	},
 	[CXT_FIXUP_HEADPHONE_MIC_PIN] = {
 		.type = HDA_FIXUP_PINS,
@@ -1013,12 +1031,15 @@ static const struct hda_fixup cxt_fixups[] = {
 		.v.pins = cxt_pincfg_sws_js201d,
 	},
 	[CXT_PINCFG_TOP_SPEAKER] = {
-		.type = HDA_FIXUP_FUNC,
-		.v.func = cxt_fixup_sirius_top_speaker,
+		.type = HDA_FIXUP_PINS,
+		.v.pins = (const struct hda_pintbl[]) {
+			{ 0x1d, 0x82170111 },
+			{ }
+		},
 	},
 };
 
-static const struct snd_pci_quirk cxt5045_fixups[] = {
+static const struct hda_quirk cxt5045_fixups[] = {
 	SND_PCI_QUIRK(0x103c, 0x30d5, "HP 530", CXT_FIXUP_HP_530),
 	SND_PCI_QUIRK(0x1179, 0xff31, "Toshiba P105", CXT_FIXUP_TOSHIBA_P105),
 	/* HP, Packard Bell, Fujitsu-Siemens & Lenovo laptops have
@@ -1038,7 +1059,7 @@ static const struct hda_model_fixup cxt5045_fixup_models[] = {
 	{}
 };
 
-static const struct snd_pci_quirk cxt5047_fixups[] = {
+static const struct hda_quirk cxt5047_fixups[] = {
 	/* HP laptops have really bad sound over 0 dB on NID 0x10.
 	 */
 	SND_PCI_QUIRK_VENDOR(0x103c, "HP", CXT_FIXUP_CAP_MIX_AMP_5047),
@@ -1050,7 +1071,7 @@ static const struct hda_model_fixup cxt5047_fixup_models[] = {
 	{}
 };
 
-static const struct snd_pci_quirk cxt5051_fixups[] = {
+static const struct hda_quirk cxt5051_fixups[] = {
 	SND_PCI_QUIRK(0x103c, 0x360b, "Compaq CQ60", CXT_PINCFG_COMPAQ_CQ60),
 	SND_PCI_QUIRK(0x17aa, 0x20f2, "Lenovo X200", CXT_PINCFG_LENOVO_X200),
 	{}
@@ -1061,7 +1082,7 @@ static const struct hda_model_fixup cxt5051_fixup_models[] = {
 	{}
 };
 
-static const struct snd_pci_quirk cxt5066_fixups[] = {
+static const struct hda_quirk cxt5066_fixups[] = {
 	SND_PCI_QUIRK(0x1025, 0x0543, "Acer Aspire One 522", CXT_FIXUP_STEREO_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x054c, "Acer Aspire 3830TG", CXT_FIXUP_ASPIRE_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x054f, "Acer Aspire 4830T", CXT_FIXUP_ASPIRE_DMIC),
@@ -1113,8 +1134,8 @@ static const struct snd_pci_quirk cxt5066_fixups[] = {
 	SND_PCI_QUIRK_VENDOR(0x17aa, "Thinkpad", CXT_FIXUP_THINKPAD_ACPI),
 	SND_PCI_QUIRK(0x1c06, 0x2011, "Lemote A1004", CXT_PINCFG_LEMOTE_A1004),
 	SND_PCI_QUIRK(0x1c06, 0x2012, "Lemote A1205", CXT_PINCFG_LEMOTE_A1205),
-	SND_PCI_QUIRK(0x2782, 0x12c3, "Sirius Gen1", CXT_PINCFG_TOP_SPEAKER),
-	SND_PCI_QUIRK(0x2782, 0x12c5, "Sirius Gen2", CXT_PINCFG_TOP_SPEAKER),
+	HDA_CODEC_QUIRK(0x2782, 0x12c3, "Sirius Gen1", CXT_PINCFG_TOP_SPEAKER),
+	HDA_CODEC_QUIRK(0x2782, 0x12c5, "Sirius Gen2", CXT_PINCFG_TOP_SPEAKER),
 	{}
 };
 
@@ -1156,6 +1177,78 @@ static void add_cx5051_fake_mutes(struct hda_codec *codec)
 	spec->gen.dac_min_mute = true;
 }
 
+#ifdef CONFIG_PROC_FS
+static void cxt5066_proc_hook(struct snd_info_buffer *buffer,
+			      struct hda_codec *codec, hda_nid_t nid)
+{
+	if (nid == codec->core.afg) {
+		unsigned int res;
+		const struct {
+			unsigned int val;
+			const char *desc;
+		} speaker_power_map[] = {
+			{ 0x10, "2.00	1.00	N/A	N/A	(Unit:W)" },
+			{ 0x14, "1.80	0.90	N/A	N/A	(Unit:W)" },
+			{ 0x1c, "1.50	1.00	N/A	N/A	(Unit:W)" },
+			{ 0x20, "1.40	1.00	N/A	N/A	(Unit:W)" },
+			{ 0x24, "1.20	1.00	N/A	N/A	(Unit:W)" },
+			{ 0x28, "1.00	0.50	N/A	N/A	(Unit:W)" },
+			{ 0x2c, "0.80	0.40	N/A	N/A	(Unit:W)" },
+			{ 0x30, "0.60	0.30	N/A	N/A	(Unit:W)" },
+			{ 0x34, "0.50	0.25	2.00	1.00	(Unit:W)" },
+			{ 0x38, "0.40	0.20	1.60	0.80	(Unit:W)" },
+			{ 0x3c, "0.25	0.13	1.00	0.50	(Unit:W)" },
+			{ -1,   "???" }
+		};
+		int i;
+
+		snd_iprintf(buffer, "Node 0x27 [Vendor Defined Widget]:\n");
+
+		snd_hda_codec_exec_verb(codec, 0x27a2000, &res);
+		snd_iprintf(buffer, "  PC beep: %s\n",
+		            res == 0x0 ? "independent mode(default)" :
+		            res == 0x2 ? "mixed mode" : "???");
+
+		snd_hda_codec_exec_verb(codec, 0x27a7000, &res);
+		snd_iprintf(buffer, "  Class D: %s\n",
+		            res == 0x0 ? "stereo mode(default)" :
+			    res == 0x10 ? "mono mode" : "???");
+
+		snd_hda_codec_exec_verb(codec, 0x27bf000, &res);
+		for (i = 0;
+		     speaker_power_map[i].val != -1 &&
+		     speaker_power_map[i].val != res;
+		     i++) {}
+		snd_iprintf(buffer, "  Speaker power: %s\n",
+			    speaker_power_map[i].desc);
+
+		snd_hda_codec_exec_verb(codec, 0x01f1f00, &res);
+		snd_iprintf(buffer, "  GS Mark: %s\n",
+		            res == 0x0 ? "Disabled" :
+		            res == 0x1 ? "Enabled" : "???");
+
+		snd_hda_codec_exec_verb(codec, 0x27a9000, &res);
+		if (res > 0x0 && res <= 0x3f)
+			snd_iprintf(buffer, "  High pass filter: %dHz\n", res*30);
+		else
+			snd_iprintf(buffer, "  High pass filter: %s\n",
+			            res == 0x0 ? "120Hz(default)" : "???");
+
+		snd_hda_codec_exec_verb(codec, 0x27aa008, &res);
+		if (res > 0x0 && res <= 0x3f)
+			snd_iprintf(buffer, "  Low pass filter: %dHz\n", res*15);
+		else
+			snd_iprintf(buffer, "  Low pass filter: %s\n",
+			            res == 0x0 ? "Disabled" : "???");
+
+		snd_hda_codec_exec_verb(codec, 0x27b4100, &res);
+		snd_iprintf(buffer, "  Adjust 3.3V LDO voltage: 0x%x\n", res);
+	}
+}
+#else
+#define cxt5066_proc_hook NULL
+#endif
+
 static int patch_conexant_auto(struct hda_codec *codec)
 {
 	struct conexant_spec *spec;
@@ -1178,6 +1271,8 @@ static int patch_conexant_auto(struct hda_codec *codec)
 		snd_hda_jack_detect_enable_callback(codec, 0x19, cx_update_headset_mic_vref);
 		break;
 	}
+
+	codec->proc_widget_hook = cxt5066_proc_hook;
 
 	cx_auto_parse_eapd(codec);
 	spec->gen.own_eapd_ctl = 1;
@@ -1202,6 +1297,14 @@ static int patch_conexant_auto(struct hda_codec *codec)
 		codec->pin_amp_workaround = 1;
 		snd_hda_pick_fixup(codec, cxt5051_fixup_models,
 				   cxt5051_fixups, cxt_fixups);
+		break;
+	/* CX20631/CX20641 node1b's default value is not same as datasheet, cause rear mic not work */
+	case 0x14f15097:
+	case 0x14f150a1:
+		snd_hda_codec_set_pincfg(codec, 0x1b, 0x01a190f0);
+		codec->pin_amp_workaround = 1;
+		snd_hda_pick_fixup(codec, cxt5066_fixup_models,
+				   cxt5066_fixups, cxt_fixups);
 		break;
 	case 0x14f15098:
 		codec->pin_amp_workaround = 1;

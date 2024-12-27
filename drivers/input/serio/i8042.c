@@ -131,7 +131,9 @@ MODULE_PARM_DESC(unmask_kbd_data, "Unconditional enable (may reveal sensitive da
 #endif
 
 static bool i8042_present;
-static bool i8042_bypass_aux_irq_test;
+static bool i8042_bypass_aux_irq_test = true;
+module_param_named(bypass_aux_test, i8042_bypass_aux_irq_test, bool, 0600);
+MODULE_PARM_DESC(debug, "Turn i8042 aux irq test off");
 static char i8042_kbd_firmware_id[128];
 static char i8042_aux_firmware_id[128];
 static struct fwnode_handle *i8042_kbd_fwnode;
@@ -142,7 +144,7 @@ static struct fwnode_handle *i8042_kbd_fwnode;
  * i8042_lock protects serialization between i8042_command and
  * the interrupt handler.
  */
-static DEFINE_SPINLOCK(i8042_lock);
+DEFINE_SPINLOCK(i8042_lock);
 
 /*
  * Writers to AUX and KBD ports as well as users issuing i8042_command
@@ -959,7 +961,7 @@ static int i8042_controller_selftest(void)
 	do {
 
 		if (i8042_command(&param, I8042_CMD_CTL_TEST)) {
-			pr_err("i8042 controller selftest timeout\n");
+			pr_info("i8042 controller selftest timeout\n");
 			return -ENODEV;
 		}
 

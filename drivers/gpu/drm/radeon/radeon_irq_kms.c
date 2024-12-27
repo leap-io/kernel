@@ -40,6 +40,7 @@
 #include "radeon_kms.h"
 #include "radeon_reg.h"
 
+#include "radeon_device.h"
 
 #define RADEON_WAIT_IDLE_TIMEOUT 200
 
@@ -343,6 +344,9 @@ int radeon_irq_kms_init(struct radeon_device *rdev)
 	INIT_DELAYED_WORK(&rdev->hotplug_work, radeon_hotplug_work_func);
 	INIT_WORK(&rdev->dp_work, radeon_dp_work_func);
 	INIT_WORK(&rdev->audio_work, r600_audio_update_hdmi);
+
+	rdev->need_recover = 0;
+	INIT_DEFERRABLE_WORK(&rdev->recover_work, radeon_recover_callback);
 
 	rdev->irq.installed = true;
 	r = radeon_irq_install(rdev, rdev->pdev->irq);

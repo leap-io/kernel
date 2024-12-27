@@ -1353,7 +1353,7 @@ static int radeon_pm_init_old(struct radeon_device *rdev)
 {
 	int ret;
 
-	rdev->pm.profile = PM_PROFILE_DEFAULT;
+	rdev->pm.profile = PM_PROFILE_AUTO;
 	rdev->pm.dynpm_state = DYNPM_STATE_DISABLED;
 	rdev->pm.dynpm_planned_action = DYNPM_ACTION_NONE;
 	rdev->pm.dynpm_can_upclock = true;
@@ -1519,6 +1519,9 @@ int radeon_pm_init(struct radeon_device *rdev)
 	case CHIP_RS780:
 	case CHIP_RS880:
 	case CHIP_RV770:
+#ifdef CONFIG_MACH_LOONGSON64
+	case CHIP_JUNIPER:
+#endif
 		/* DPM requires the RLC, RV770+ dGPU requires SMC */
 		if (!rdev->rlc_fw)
 			rdev->pm.pm_method = PM_METHOD_PROFILE;
@@ -1536,7 +1539,9 @@ int radeon_pm_init(struct radeon_device *rdev)
 	case CHIP_RV740:
 	case CHIP_CEDAR:
 	case CHIP_REDWOOD:
+#ifndef CONFIG_MACH_LOONGSON64
 	case CHIP_JUNIPER:
+#endif
 	case CHIP_CYPRESS:
 	case CHIP_HEMLOCK:
 	case CHIP_PALM:
@@ -1853,10 +1858,11 @@ static bool radeon_pm_debug_check_in_vbl(struct radeon_device *rdev, bool finish
 static void radeon_dynpm_idle_work_handler(struct work_struct *work)
 {
 	struct radeon_device *rdev;
-
+	int resched;
 	rdev = container_of(work, struct radeon_device,
 				pm.dynpm_idle_work.work);
 
+	resched = ttm_bo_lock_delayed_workqueue(&rdev->mman.bdev);
 	mutex_lock(&rdev->pm.mutex);
 	if (rdev->pm.dynpm_state == DYNPM_STATE_ACTIVE) {
 		int not_processed = 0;
@@ -1907,6 +1913,7 @@ static void radeon_dynpm_idle_work_handler(struct work_struct *work)
 				      msecs_to_jiffies(RADEON_IDLE_LOOP_MS));
 	}
 	mutex_unlock(&rdev->pm.mutex);
+	ttm_bo_unlock_delayed_workqueue(&rdev->mman.bdev, resched);
 }
 
 /*

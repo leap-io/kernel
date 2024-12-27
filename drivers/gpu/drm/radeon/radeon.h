@@ -627,6 +627,7 @@ void radeon_gart_unbind(struct radeon_device *rdev, unsigned offset,
 int radeon_gart_bind(struct radeon_device *rdev, unsigned offset,
 		     int pages, struct page **pagelist,
 		     dma_addr_t *dma_addr, uint32_t flags);
+void radeon_gart_restore(struct radeon_device *rdev);
 
 
 /*
@@ -2407,6 +2408,8 @@ struct radeon_device {
 	struct delayed_work hotplug_work;
 	struct work_struct dp_work;
 	struct work_struct audio_work;
+	int need_recover;
+	struct delayed_work recover_work;
 	int num_crtc; /* number of crtcs */
 	struct mutex dc_hw_i2c_mutex; /* display controller hw i2c mutex */
 	bool has_uvd;

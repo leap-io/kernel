@@ -16,6 +16,7 @@ config MIPS
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_HAS_UBSAN_SANITIZE_ALL
 	select ARCH_HAS_GCOV_PROFILE_ALL
+	select ARCH_SUPPORTS_NUMA_BALANCING if 64BIT
 	select ARCH_KEEP_MEMBLOCK
 	select ARCH_USE_BUILTIN_BSWAP
 	select ARCH_USE_CMPXCHG_LOCKREF if 64BIT
@@ -29,7 +30,7 @@ config MIPS
 	select BUILDTIME_TABLE_SORT
 	select CLONE_BACKWARDS
 	select CPU_NO_EFFICIENT_FFS if (TARGET_ISA_REV < 1)
-	select CPU_PM if CPU_IDLE
+	select CPU_PM if CPU_IDLE || SUSPEND
 	select GENERIC_ATOMIC64 if !64BIT
 	select GENERIC_CMOS_UPDATE
 	select GENERIC_CPU_AUTOPROBE
@@ -102,6 +103,11 @@ config MIPS
 	select TRACE_IRQFLAGS_SUPPORT
 	select ARCH_HAS_ELFCORE_COMPAT
 	select HAVE_ARCH_KCSAN if 64BIT
+	select HAVE_ARCH_AUDITSYSCALL
+	select AUDIT_ARCH
+
+config AUDIT_ARCH
+	bool
 
 config MIPS_FIXUP_BIGPHYS_ADDR
 	bool
@@ -492,6 +498,7 @@ config MACH_LOONGSON64
 	select CSRC_R4K
 	select CEVT_R4K
 	select FORCE_PCI
+	select HAVE_CLK
 	select ISA
 	select I8259
 	select IRQ_MIPS_CPU
@@ -515,6 +522,8 @@ config MACH_LOONGSON64
 	select BUILTIN_DTB
 	select PCI_HOST_GENERIC
 	select HAVE_ARCH_NODEDATA_EXTENSION if NUMA
+	select CPU_SUPPORTS_CPUFREQ
+	select MIPS_EXTERNAL_TIMER
 	help
 	  This enables the support of Loongson-2/3 family of machines.
 
@@ -1013,6 +1022,12 @@ config FW_ARC
 config ARCH_MAY_HAVE_PC_FDC
 	bool
 
+config AUDITSYSCALL_O32
+	bool
+
+config AUDITSYSCALL_N32
+	bool
+
 config BOOT_RAW
 	bool
 
@@ -1284,6 +1299,7 @@ config CPU_LOONGSON64
 	select GPIOLIB
 	select SWIOTLB
 	select HAVE_KVM
+	select HAVE_PLAT_MEMCPY
 	help
 	  The Loongson GSx64(GS264/GS464/GS464E/GS464V) series of processor
 	  cores implements the MIPS64R2 instruction set with many extensions,
@@ -2106,9 +2122,9 @@ endchoice
 
 config ARCH_FORCE_MAX_ORDER
 	int "Maximum zone order"
-	default "13" if MIPS_HUGE_TLB_SUPPORT && PAGE_SIZE_64KB
-	default "12" if MIPS_HUGE_TLB_SUPPORT && PAGE_SIZE_32KB
-	default "11" if MIPS_HUGE_TLB_SUPPORT && PAGE_SIZE_16KB
+	default "13" if (NUMA_BALANCING || MIPS_HUGE_TLB_SUPPORT) && PAGE_SIZE_64KB
+	default "12" if (NUMA_BALANCING || MIPS_HUGE_TLB_SUPPORT) && PAGE_SIZE_32KB
+	default "11" if (NUMA_BALANCING || MIPS_HUGE_TLB_SUPPORT) && PAGE_SIZE_16KB
 	default "10"
 	help
 	  The kernel memory allocator divides physically contiguous memory
@@ -3087,6 +3103,7 @@ config MIPS32_O32
 	select ARCH_WANT_OLD_COMPAT_IPC
 	select COMPAT
 	select MIPS32_COMPAT
+	select AUDITSYSCALL_O32 if AUDITSYSCALL
 	help
 	  Select this option if you want to run o32 binaries.  These are pure
 	  32-bit binaries as used by the 32-bit Linux/MIPS port.  Most of
@@ -3100,6 +3117,7 @@ config MIPS32_N32
 	select ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 	select COMPAT
 	select MIPS32_COMPAT
+	select AUDITSYSCALL_N32 if AUDITSYSCALL
 	help
 	  Select this option if you want to run n32 binaries.  These are
 	  64-bit binaries using 32-bit quantities for addressing and certain
